@@ -1,11 +1,11 @@
-# syntax=docker/dockerfile:1.7
 
-ARG RUST_VERSION=1.89
+
+ARG RUST_VERSION=1.75
 ARG DEBIAN_VERSION=bookworm
 ARG APP_NAME=tie
 ARG APP_FEATURES=swagger-ui
 
-FROM rust:${RUST_VERSION}-slim-${DEBIAN_VERSION} AS builder
+FROM public.ecr.aws/docker/library/rust:${RUST_VERSION}-slim-${DEBIAN_VERSION} AS builder
 ARG APP_NAME
 ARG APP_FEATURES
 WORKDIR /app
@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsqlite3-dev \
     clang \
     cmake \
+    curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -29,7 +30,7 @@ COPY openapi.yaml ./openapi.yaml
 
 RUN cargo build --release --features "${APP_FEATURES}" --bin ${APP_NAME}
 
-FROM debian:${DEBIAN_VERSION}-slim AS runtime
+FROM public.ecr.aws/debian/debian:${DEBIAN_VERSION}-slim AS runtime
 ARG APP_NAME
 ENV APP_NAME=${APP_NAME}
 ENV TIE_HOST=0.0.0.0

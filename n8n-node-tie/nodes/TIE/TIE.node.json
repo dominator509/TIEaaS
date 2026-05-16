@@ -1,0 +1,10 @@
+{
+  "node": "n8n-nodes-tie",
+  "version": 1,
+  "displayName": "TIE Validator",
+  "description": "Validate code, facts, and actions against the TIE service",
+  "defaults": {
+    "name": "TIE Validator"
+  },
+  "documentationUrl": "https://example.com/tie/docs/n8n_workflow_example"
+}

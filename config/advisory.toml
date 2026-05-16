@@ -1,0 +1,8 @@
+[policy]
+mode = "advisory"
+require_fact_citations = false
+require_action_approval = false
+
+[performance]
+verifier_budget_ms = 125
+validation_cache_ttl_secs = 90
