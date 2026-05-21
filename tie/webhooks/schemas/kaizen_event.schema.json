@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tie.local/schemas/kaizen-event.schema.json",
+  "title": "KaizenEvent",
+  "type": "object",
+  "required": [
+    "event_type",
+    "cluster_id",
+    "category",
+    "severity",
+    "occurrence_count",
+    "window",
+    "recommendation",
+    "created_at"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "kaizen.pattern_detected"
+    },
+    "cluster_id": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string"
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["info", "warning", "error", "critical"]
+    },
+    "occurrence_count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "window": {
+      "type": "string"
+    },
+    "recommendation": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": true
+}
