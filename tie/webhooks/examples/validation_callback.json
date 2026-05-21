@@ -1,0 +1,21 @@
+{
+  "event_type": "validation.completed",
+  "request_id": "0195f6b5-f1f4-7c4a-b9f6-92f7ea0d0f10",
+  "verdict": "warn",
+  "enforcement_action": "allow_with_warning",
+  "summary": "Fact validation completed with a missing citation warning.",
+  "evidence": [
+    {
+      "adapter": "fact_verifier",
+      "verdict": "warn",
+      "severity": "warning",
+      "message": "Claim was well-formed but missing one required source reference.",
+      "score": 0.82,
+      "references": [
+        "registry://facts/company-policy/incident-severity-v2"
+      ],
+      "duration_ms": 22
+    }
+  ],
+  "completed_at": "2026-04-24T12:00:00Z"
+}
