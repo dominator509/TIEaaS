@@ -1,0 +1,21 @@
+[server]
+http_bind = "0.0.0.0:8080"
+grpc_bind = "0.0.0.0:50051"
+enable_grpc = false
+
+[policy]
+mode = "critical-fail-closed"
+require_fact_citations = true
+require_action_approval = true
+
+[performance]
+cache_ttl_secs = 300
+validation_cache_ttl_secs = 60
+verifier_budget_ms = 175
+
+[registry]
+database_url = "sqlite://tie.db"
+
+[security]
+# hex-encoded 32-byte Ed25519 signing key seed
+signing_key_hex = ""

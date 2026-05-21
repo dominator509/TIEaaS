@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tie.local/schemas/validation-callback.schema.json",
+  "title": "ValidationCallback",
+  "type": "object",
+  "required": [
+    "event_type",
+    "request_id",
+    "verdict",
+    "enforcement_action",
+    "summary",
+    "evidence",
+    "completed_at"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "validation.completed"
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["pass", "warn", "fail", "inconclusive"]
+    },
+    "enforcement_action": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["adapter", "verdict", "severity", "message", "score", "references", "duration_ms"],
+        "properties": {
+          "adapter": { "type": "string" },
+          "verdict": { "type": "string", "enum": ["pass", "warn", "fail", "inconclusive"] },
+          "severity": { "type": "string", "enum": ["info", "warning", "error", "critical"] },
+          "message": { "type": "string" },
+          "score": { "type": "number" },
+          "references": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "duration_ms": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": true
+      }
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": true
+}
