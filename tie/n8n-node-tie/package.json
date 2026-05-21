@@ -1,0 +1,55 @@
+{
+  "name": "n8n-nodes-tie",
+  "version": "0.1.0",
+  "description": "n8n custom node for the TIE validation service",
+  "license": "Apache-2.0",
+  "homepage": "https://example.com/tie",
+  "repository": {
+    "type": "git",
+    "url": "https://example.com/tie.git"
+  },
+  "author": "OpenAI",
+  "keywords": [
+    "n8n-community-node-package",
+    "n8n",
+    "validation",
+    "governance",
+    "agent-safety",
+    "tie"
+  ],
+  "files": [
+    "dist"
+  ],
+  "main": "dist/nodes/TIE/TIE.node.js",
+  "types": "dist/nodes/TIE/TIE.node.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "engines": {
+    "node": ">=20.15"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "^2.16.0"
+  },
+  "devDependencies": {
+    "@swc/core": "^1.15.33",
+    "@swc/helpers": "^0.5.21",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.19.19",
+    "jest": "^30.4.2",
+    "regenerator-runtime": "^0.14.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/TIEApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/TIE/TIE.node.js"
+    ]
+  }
+}
