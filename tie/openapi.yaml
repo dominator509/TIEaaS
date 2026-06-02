@@ -1,0 +1,796 @@
+openapi: 3.1.0
+info:
+  title: TIE Validation API
+  version: 0.1.0
+  summary: Trust, Integrity, and Evidence service API
+  description: |
+    The TIE API validates code, facts, and actions against deployment policy and
+    optional Ground Truth Registry context. The API is HTTP-first and designed
+    for single-tenant deployments today, with future-ready seams for broader
+    deployment targets.
+
+    This specification matches the current Phase 0/1 service surface:
+    - health and readiness probes
+    - validation endpoint
+    - Ground Truth Registry CRUD endpoints
+
+    Authentication is deployment-configurable. In local development, operators
+    may run the service without authentication. In production, API key and/or
+    bearer token authentication should be enforced at the gateway.
+  contact:
+    name: TIE Architecture
+  license:
+    name: Proprietary
+servers:
+  - url: http://127.0.0.1:8080
+    description: Local development
+  - url: https://tie.internal.example.com
+    description: Production example
+externalDocs:
+  description: Architecture and deployment guidance
+  url: ./ARCHITECTURE.md
+
+tags:
+  - name: system
+    description: Health and readiness endpoints
+  - name: validation
+    description: Subject validation endpoints
+  - name: registry
+    description: Ground Truth Registry endpoints
+
+paths:
+  /healthz:
+    get:
+      tags: [system]
+      operationId: healthz
+      summary: Liveness probe
+      description: Returns a simple liveness signal for load balancers and orchestrators.
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                ok:
+                  value:
+                    status: ok
+                    service: tie
+
+  /readyz:
+    get:
+      tags: [system]
+      operationId: readyz
+      summary: Readiness probe
+      description: |
+        Returns readiness state after confirming critical dependencies such as the
+        registry database are available.
+      responses:
+        '200':
+          description: Service is ready to accept requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+              examples:
+                ready:
+                  value:
+                    status: ready
+                    policy_mode: critical-fail-closed
+                    grpc_configured: false
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/validate:
+    post:
+      tags: [validation]
+      operationId: validate
+      summary: Validate a code, fact, or action subject
+      description: |
+        Validates a single subject through the applicable verifier adapter and
+        returns a decision with evidence, timings, and registry context.
+
+        Current verifier routing is based on `subject_type`:
+        - `code` -> code verifier
+        - `fact` -> fact verifier
+        - `action` -> action verifier
+
+        The final verdict is resolved against the deployment `policy_mode`.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidationRequest'
+            examples:
+              code_pass:
+                summary: Code validation example
+                value:
+                  request_id: req_018ffb80a8e74f8d8f18f3a2d9196ce1
+                  subject_type: code
+                  subject: |
+                    fn add(a: i32, b: i32) -> i32 {
+                      a + b
+                    }
+                  registry_record_ids:
+                    - reg_2ab5a7f5e6b245f7bfe8d9480c100101
+                  metadata:
+                    repo: tie-core
+                    path: src/lib.rs
+              fact_warn:
+                summary: Fact validation example
+                value:
+                  request_id: req_018ffb80a8e74f8d8f18f3a2d9196ce2
+                  subject_type: fact
+                  subject: Rust always outperforms Go in every backend workload.
+                  registry_record_ids: []
+                  metadata:
+                    citations:
+                      - https://example.com/benchmark
+              action_warn:
+                summary: Action validation example
+                value:
+                  request_id: req_018ffb80a8e74f8d8f18f3a2d9196ce3
+                  subject_type: action
+                  subject: Rotate the production database credentials.
+                  metadata:
+                    approval_token: apr_2026_01_approved
+      responses:
+        '200':
+          description: Validation completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResponse'
+              examples:
+                allow:
+                  summary: Passing validation response
+                  value:
+                    request_id: req_018ffb80a8e74f8d8f18f3a2d9196ce1
+                    verdict: pass
+                    enforcement_action: allow
+                    summary: validation pass with 1 evidence item(s) under policy mode critical-fail-closed
+                    evidence:
+                      - adapter: code_verifier
+                        verdict: pass
+                        severity: info
+                        message: code heuristics passed
+                        score: 0.97
+                        references:
+                          - reg_2ab5a7f5e6b245f7bfe8d9480c100101
+                        duration_ms: 4
+                    registry_context:
+                      - id: reg_2ab5a7f5e6b245f7bfe8d9480c100101
+                        namespace: engineering
+                        kind: code_policy
+                        key: rust/safe-defaults
+                        version: 1
+                        value:
+                          lint_profile: strict
+                        provenance:
+                          source: architecture
+                          owner: platform-security
+                        digest_sha256: 7d3a1cb7ef2eeaf3011c2b370f4df3a91123456789abcdef0123456789abcd
+                        signature_ed25519: null
+                        created_at: '2026-01-14T10:00:00Z'
+                        updated_at: '2026-01-14T10:00:00Z'
+                        retired_at: null
+                        tags: [rust, code, policy]
+                    cache_hit: false
+                    timings_ms:
+                      total: 9
+                block:
+                  summary: Blocking validation response
+                  value:
+                    request_id: req_018ffb80a8e74f8d8f18f3a2d9196ce9
+                    verdict: fail
+                    enforcement_action: block
+                    summary: validation fail with 1 evidence item(s) under policy mode critical-fail-closed
+                    evidence:
+                      - adapter: action_verifier
+                        verdict: fail
+                        severity: critical
+                        message: high-risk action blocked by policy
+                        score: 0.05
+                        references: []
+                        duration_ms: 2
+                    registry_context: []
+                    cache_hit: false
+                    timings_ms:
+                      total: 3
+        '400':
+          description: Invalid request payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                subject_required:
+                  value:
+                    error:
+                      code: invalid_input
+                      message: 'invalid input: subject must not be empty'
+                      retryable: false
+                      request_id: 018ffb80-a8e7-7f8d-8f18-f3a2d9196ce1
+        '504':
+          description: One or more verifier adapters exceeded budget
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Internal service error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/registry/records:
+    post:
+      tags: [registry]
+      operationId: createRegistryRecord
+      summary: Create a registry record
+      description: Creates a new active Ground Truth Registry record.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistryRecordUpsert'
+            examples:
+              create_policy:
+                value:
+                  namespace: engineering
+                  kind: code_policy
+                  key: rust/safe-defaults
+                  value:
+                    lint_profile: strict
+                    deny_unsafe: true
+                  provenance:
+                    source: adr-001
+                    owner: platform-security
+                  tags: [rust, code, policy]
+      responses:
+        '200':
+          description: Created registry record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistryRecord'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    get:
+      tags: [registry]
+      operationId: listRegistryRecords
+      summary: List registry records
+      description: Returns all registry records, optionally including retired entries.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: include_retired
+          in: query
+          required: false
+          description: Include retired records in the result set.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: List of registry records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RegistryRecord'
+        '503':
+          description: Database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/registry/records/{id}:
+    get:
+      tags: [registry]
+      operationId: getRegistryRecord
+      summary: Get a registry record by id
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Registry record id.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Registry record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistryRecord'
+        '404':
+          description: Record not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      tags: [registry]
+      operationId: updateRegistryRecord
+      summary: Supersede an existing registry record
+      description: |
+        Creates a new version of an existing record and retires the prior active
+        version. Clients should treat ids as immutable and versions as append-only.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Registry record id to supersede.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistryRecordUpdate'
+      responses:
+        '200':
+          description: Superseded record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistryRecord'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Record not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      tags: [registry]
+      operationId: retireRegistryRecord
+      summary: Retire an existing registry record
+      description: Soft-deletes the record by setting `retired_at`.
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Registry record id to retire.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Retirement result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteRegistryResponse'
+              examples:
+                retired:
+                  value:
+                    status: retired
+                    id: reg_2ab5a7f5e6b245f7bfe8d9480c100101
+        '404':
+          description: Record not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /v1/registry/records/by-key/{namespace}/{kind}/{key}:
+    get:
+      tags: [registry]
+      operationId: getRegistryRecordByKey
+      summary: Get latest active registry record by composite key
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+        - {}
+      parameters:
+        - name: namespace
+          in: path
+          required: true
+          description: Registry namespace.
+          schema:
+            type: string
+        - name: kind
+          in: path
+          required: true
+          description: Registry kind.
+          schema:
+            type: string
+        - name: key
+          in: path
+          required: true
+          description: Registry logical key.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Latest active registry record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistryRecord'
+        '404':
+          description: Record not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: Database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-TIE-API-Key
+      description: API key authentication for production deployments.
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Bearer token authentication for production deployments.
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, service]
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: tie
+
+    ReadinessResponse:
+      type: object
+      required: [status, policy_mode, grpc_configured]
+      properties:
+        status:
+          type: string
+          example: ready
+        policy_mode:
+          $ref: '#/components/schemas/PolicyMode'
+        grpc_configured:
+          type: boolean
+          example: false
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+
+    ErrorBody:
+      type: object
+      required: [code, message, retryable, request_id]
+      properties:
+        code:
+          type: string
+          enum:
+            - invalid_input
+            - not_found
+            - timeout
+            - database_error
+            - internal_error
+        message:
+          type: string
+        retryable:
+          type: boolean
+        request_id:
+          type: string
+          description: Correlation id for support, audit, and retry tracing.
+
+    PolicyMode:
+      type: string
+      enum:
+        - advisory
+        - critical_fail_closed
+        - full_fail_closed
+      description: |
+        Deployment policy mode. The runtime configuration string may use
+        `critical-fail-closed` and `full-fail-closed`; the JSON API serializes
+        enum values in snake_case.
+
+    SubjectType:
+      type: string
+      enum: [code, fact, action]
+
+    Severity:
+      type: string
+      enum: [info, warning, error, critical]
+
+    Verdict:
+      type: string
+      enum: [pass, warn, fail, inconclusive]
+
+    EnforcementAction:
+      type: string
+      enum: [allow, allow_with_warning, block, quarantine]
+      description: Gateway/action outcome derived from the final verdict.
+
+    ValidationRequest:
+      type: object
+      required:
+        - subject_type
+        - subject
+      properties:
+        request_id:
+          type: string
+          description: Optional caller-provided request id. Generated if omitted or blank.
+          example: req_018ffb80a8e74f8d8f18f3a2d9196ce1
+        subject_type:
+          $ref: '#/components/schemas/SubjectType'
+        subject:
+          type: string
+          description: The code snippet, fact claim, or action request to validate.
+        registry_record_ids:
+          type: array
+          description: Optional registry records to hydrate into validation context.
+          items:
+            type: string
+        metadata:
+          type: object
+          additionalProperties: true
+          description: |
+            Free-form metadata for adapters. Examples:
+            - fact: `citations`
+            - action: `approval_token`
+            - code: repo/path metadata
+          default: {}
+
+    EvidenceItem:
+      type: object
+      required:
+        - adapter
+        - verdict
+        - severity
+        - message
+        - score
+        - references
+        - duration_ms
+      properties:
+        adapter:
+          type: string
+          example: code_verifier
+        verdict:
+          $ref: '#/components/schemas/Verdict'
+        severity:
+          $ref: '#/components/schemas/Severity'
+        message:
+          type: string
+        score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        references:
+          type: array
+          items:
+            type: string
+          description: Registry record ids used as supporting context.
+        duration_ms:
+          type: integer
+          format: int64
+          minimum: 0
+
+    ValidationResponse:
+      type: object
+      required:
+        - request_id
+        - verdict
+        - enforcement_action
+        - summary
+        - evidence
+        - registry_context
+        - cache_hit
+        - timings_ms
+      properties:
+        request_id:
+          type: string
+        verdict:
+          $ref: '#/components/schemas/Verdict'
+        enforcement_action:
+          $ref: '#/components/schemas/EnforcementAction'
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceItem'
+        registry_context:
+          type: array
+          items:
+            $ref: '#/components/schemas/RegistryRecord'
+        cache_hit:
+          type: boolean
+        timings_ms:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64
+          description: Named timing buckets in milliseconds.
+
+    RegistryRecordUpsert:
+      type: object
+      required:
+        - namespace
+        - kind
+        - key
+        - value
+      properties:
+        namespace:
+          type: string
+        kind:
+          type: string
+        key:
+          type: string
+        value:
+          type: object
+          additionalProperties: true
+        provenance:
+          type: object
+          additionalProperties: true
+          default: {}
+        tags:
+          type: array
+          items:
+            type: string
+          default: []
+
+    RegistryRecordUpdate:
+      type: object
+      required:
+        - value
+      properties:
+        value:
+          type: object
+          additionalProperties: true
+        provenance:
+          type: object
+          additionalProperties: true
+          default: {}
+        tags:
+          type: array
+          items:
+            type: string
+          default: []
+
+    RegistryRecord:
+      type: object
+      required:
+        - id
+        - namespace
+        - kind
+        - key
+        - version
+        - value
+        - provenance
+        - digest_sha256
+        - created_at
+        - updated_at
+        - tags
+      properties:
+        id:
+          type: string
+        namespace:
+          type: string
+        kind:
+          type: string
+        key:
+          type: string
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+        value:
+          type: object
+          additionalProperties: true
+        provenance:
+          type: object
+          additionalProperties: true
+        digest_sha256:
+          type: string
+          description: SHA-256 digest of the canonical record payload.
+        signature_ed25519:
+          type:
+            - string
+            - 'null'
+          description: Ed25519 signature over the digest when signing is enabled.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        retired_at:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        tags:
+          type: array
+          items:
+            type: string
+
+    DeleteRegistryResponse:
+      type: object
+      required: [status, id]
+      properties:
+        status:
+          type: string
+          enum: [retired]
+        id:
+          type: string

@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  tie:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tie:local
+    container_name: tie
+    restart: unless-stopped
+    environment:
+      TIE_HTTP_BIND: 0.0.0.0:8080
+      TIE_DATABASE_URL: sqlite:///var/lib/tie/tie.db
+      TIE_POLICY_MODE: ${TIE_POLICY_MODE:-critical-fail-closed}
+      TIE_ENABLE_GRPC: ${TIE_ENABLE_GRPC:-false}
+      TIE_GRPC_BIND: 0.0.0.0:50051
+      TIE_CACHE_TTL_SECS: ${TIE_CACHE_TTL_SECS:-300}
+      TIE_VALIDATION_CACHE_TTL_SECS: ${TIE_VALIDATION_CACHE_TTL_SECS:-60}
+      TIE_VERIFIER_BUDGET_MS: ${TIE_VERIFIER_BUDGET_MS:-175}
+      TIE_REQUIRE_FACT_CITATIONS: ${TIE_REQUIRE_FACT_CITATIONS:-true}
+      TIE_REQUIRE_ACTION_APPROVAL: ${TIE_REQUIRE_ACTION_APPROVAL:-true}
+      TIE_SIGNING_KEY_HEX: ${TIE_SIGNING_KEY_HEX:-}
+      RUST_LOG: ${RUST_LOG:-info}
+    ports:
+      - "${TIE_HTTP_PORT:-8080}:8080"
+      - "${TIE_GRPC_PORT:-50051}:50051"
+    volumes:
+      - tie-data:/var/lib/tie
+      - ./config:/etc/tie:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/healthz"]
+      interval: 20s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    stop_grace_period: 20s
+
+volumes:
+  tie-data:
