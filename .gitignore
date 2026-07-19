@@ -1,0 +1,4 @@
+target/
+n8n-node-tie/node_modules/
+zeroclaw-hook/venv/
+tie.db

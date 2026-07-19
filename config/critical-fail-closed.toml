@@ -1,0 +1,8 @@
+[policy]
+mode = "critical-fail-closed"
+require_fact_citations = true
+require_action_approval = true
+
+[performance]
+verifier_budget_ms = 175
+validation_cache_ttl_secs = 60
