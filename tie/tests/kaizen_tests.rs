@@ -72,7 +72,9 @@ mod tie_impl {
             assert_eq!(row.get::<String, _>("severity"), "error");
             assert_eq!(row.get::<String, _>("component"), "decision_layer");
             assert!(row.get::<String, _>("message").contains("warn"));
-            assert!(row.get::<String, _>("metadata_json").contains("subject_type"));
+            assert!(row
+                .get::<String, _>("metadata_json")
+                .contains("subject_type"));
         }
 
         #[tokio::test]
@@ -109,7 +111,10 @@ mod tie_impl {
             let not_found = AppError::NotFound("missing record".to_string()).error_response();
 
             assert_eq!(invalid.status(), actix_web::http::StatusCode::BAD_REQUEST);
-            assert_eq!(timeout.status(), actix_web::http::StatusCode::GATEWAY_TIMEOUT);
+            assert_eq!(
+                timeout.status(),
+                actix_web::http::StatusCode::GATEWAY_TIMEOUT
+            );
             assert_eq!(not_found.status(), actix_web::http::StatusCode::NOT_FOUND);
         }
 

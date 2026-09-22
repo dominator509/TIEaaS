@@ -11,7 +11,10 @@ mod tie_impl {
         use sqlx::sqlite::SqlitePoolOptions;
         use std::{sync::Arc, time::Duration};
 
-        async fn test_state(require_fact_citations: bool, require_action_approval: bool) -> AppState {
+        async fn test_state(
+            require_fact_citations: bool,
+            require_action_approval: bool,
+        ) -> AppState {
             let pool = SqlitePoolOptions::new()
                 .max_connections(1)
                 .connect("sqlite::memory:")
@@ -180,17 +183,29 @@ mod tie_impl {
                 duration_ms: 7,
             };
 
-            assert_eq!(resolve_verdict(PolicyMode::Advisory, &[warn_item.clone()]), Verdict::Warn);
+            assert_eq!(
+                resolve_verdict(PolicyMode::Advisory, &[warn_item.clone()]),
+                Verdict::Warn
+            );
             assert_eq!(
                 resolve_verdict(PolicyMode::CriticalFailClosed, &[warn_item.clone()]),
                 Verdict::Warn
             );
             assert_eq!(
-                resolve_verdict(PolicyMode::CriticalFailClosed, &[critical_fail_item.clone()]),
+                resolve_verdict(
+                    PolicyMode::CriticalFailClosed,
+                    &[critical_fail_item.clone()]
+                ),
                 Verdict::Fail
             );
-            assert_eq!(resolve_verdict(PolicyMode::FullFailClosed, &[warn_item]), Verdict::Warn);
-            assert_eq!(resolve_verdict(PolicyMode::FullFailClosed, &[critical_fail_item]), Verdict::Fail);
+            assert_eq!(
+                resolve_verdict(PolicyMode::FullFailClosed, &[warn_item]),
+                Verdict::Warn
+            );
+            assert_eq!(
+                resolve_verdict(PolicyMode::FullFailClosed, &[critical_fail_item]),
+                Verdict::Fail
+            );
         }
     }
 }
