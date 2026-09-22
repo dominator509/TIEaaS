@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, fmt, sync::Arc, time::Duration};
 
 use actix_web::{
     delete, get, post, put,
-    web::{self, Data, Json, Path, Query},
+    web::{Data, Json, Path, Query},
     App, HttpResponse, HttpServer, ResponseError,
 };
 use anyhow::Context;
@@ -164,6 +164,7 @@ enum AppError {
     #[error("not found: {0}")]
     NotFound(String),
     #[error("timeout: {0}")]
+    #[allow(dead_code)] // reserved for adapter-timeout error mapping
     Timeout(String),
     #[error("database error")]
     Database(#[from] sqlx::Error),
@@ -406,10 +407,7 @@ struct ApiDoc;
 async fn main() -> std::io::Result<()> {
     if let Err(error) = run().await {
         error!(error = %error, "TIE service terminated with an error");
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            error.to_string(),
-        ));
+        return Err(std::io::Error::other(error.to_string()));
     }
     Ok(())
 }
