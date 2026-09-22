@@ -4,18 +4,13 @@ use serde::{Deserialize, Serialize};
 
 /// Deployment profile controls default enforcement behavior and operational
 /// expectations. The effective policy can still be overridden by config.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum DeploymentProfile {
     Advisory,
+    #[default]
     CriticalFailClosed,
     FullFailClosed,
-}
-
-impl Default for DeploymentProfile {
-    fn default() -> Self {
-        Self::CriticalFailClosed
-    }
 }
 
 /// Stable service identity used across logs, metrics, and signed verdicts.

@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, fmt, sync::Arc, time::Duration};
 
 use actix_web::{
     delete, get, post, put,
-    web::{self, Data, Json, Path, Query},
+    web::{Data, Json, Path, Query},
     App, HttpResponse, HttpServer, ResponseError,
 };
 use anyhow::Context;
@@ -164,6 +164,7 @@ enum AppError {
     #[error("not found: {0}")]
     NotFound(String),
     #[error("timeout: {0}")]
+    #[allow(dead_code)] // reserved for adapter-timeout error mapping
     Timeout(String),
     #[error("database error")]
     Database(#[from] sqlx::Error),
@@ -174,11 +175,27 @@ enum AppError {
 impl ResponseError for AppError {
     fn error_response(&self) -> HttpResponse {
         let (status, code, retryable) = match self {
-            Self::InvalidInput(_) => (actix_web::http::StatusCode::BAD_REQUEST, "invalid_input", false),
+            Self::InvalidInput(_) => (
+                actix_web::http::StatusCode::BAD_REQUEST,
+                "invalid_input",
+                false,
+            ),
             Self::NotFound(_) => (actix_web::http::StatusCode::NOT_FOUND, "not_found", false),
-            Self::Timeout(_) => (actix_web::http::StatusCode::GATEWAY_TIMEOUT, "timeout", true),
-            Self::Database(_) => (actix_web::http::StatusCode::SERVICE_UNAVAILABLE, "database_error", true),
-            Self::Internal(_) => (actix_web::http::StatusCode::INTERNAL_SERVER_ERROR, "internal_error", true),
+            Self::Timeout(_) => (
+                actix_web::http::StatusCode::GATEWAY_TIMEOUT,
+                "timeout",
+                true,
+            ),
+            Self::Database(_) => (
+                actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
+                "database_error",
+                true,
+            ),
+            Self::Internal(_) => (
+                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_error",
+                true,
+            ),
         };
 
         let body = ErrorEnvelope {
@@ -390,7 +407,7 @@ struct ApiDoc;
 async fn main() -> std::io::Result<()> {
     if let Err(error) = run().await {
         error!(error = %error, "TIE service terminated with an error");
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, error.to_string()));
+        return Err(std::io::Error::other(error.to_string()));
     }
     Ok(())
 }
@@ -480,7 +497,9 @@ async fn serve(state: AppState) -> anyhow::Result<()> {
             .service(delete_registry_record);
 
         #[cfg(feature = "swagger-ui")]
-        let app = app.service(SwaggerUi::new("/swagger-ui/{_:.*}").url("/api-docs/openapi.json", ApiDoc::openapi()));
+        let app = app.service(
+            SwaggerUi::new("/swagger-ui/{_:.*}").url("/api-docs/openapi.json", ApiDoc::openapi()),
+        );
 
         app
     })
@@ -591,10 +610,15 @@ async fn readyz(state: Data<AppState>) -> Result<Json<Value>, AppError> {
 ))]
 #[post("/v1/validate")]
 #[instrument(skip_all, fields(request_id = %payload.request_id))]
-async fn validate(state: Data<AppState>, payload: Json<ValidationRequest>) -> Result<Json<ValidationResponse>, AppError> {
+async fn validate(
+    state: Data<AppState>,
+    payload: Json<ValidationRequest>,
+) -> Result<Json<ValidationResponse>, AppError> {
     let mut request = payload.into_inner();
     if request.subject.trim().is_empty() {
-        return Err(AppError::InvalidInput("subject must not be empty".to_string()));
+        return Err(AppError::InvalidInput(
+            "subject must not be empty".to_string(),
+        ));
     }
     if request.request_id.trim().is_empty() {
         request.request_id = new_request_id();
@@ -624,7 +648,11 @@ async fn validate(state: Data<AppState>, payload: Json<ValidationRequest>) -> Re
 
     let fact_ev = run_with_budget(
         state.config.verifier_budget,
-        run_fact_verifier(&request, &registry_refs, state.config.require_fact_citations),
+        run_fact_verifier(
+            &request,
+            &registry_refs,
+            state.config.require_fact_citations,
+        ),
         "fact_verifier",
     )
     .await;
@@ -634,7 +662,11 @@ async fn validate(state: Data<AppState>, payload: Json<ValidationRequest>) -> Re
 
     let action_ev = run_with_budget(
         state.config.verifier_budget,
-        run_action_verifier(&request, &registry_refs, state.config.require_action_approval),
+        run_action_verifier(
+            &request,
+            &registry_refs,
+            state.config.require_action_approval,
+        ),
         "action_verifier",
     )
     .await;
@@ -672,7 +704,10 @@ async fn validate(state: Data<AppState>, payload: Json<ValidationRequest>) -> Re
         timings_ms,
     };
 
-    state.validation_cache.insert(cache_key, response.clone()).await;
+    state
+        .validation_cache
+        .insert(cache_key, response.clone())
+        .await;
 
     if verdict != Verdict::Pass {
         log_kaizen_event(
@@ -742,7 +777,10 @@ async fn list_registry_records(
     )
 ))]
 #[get("/v1/registry/records/{id}")]
-async fn get_registry_record(state: Data<AppState>, id: Path<String>) -> Result<Json<RegistryRecord>, AppError> {
+async fn get_registry_record(
+    state: Data<AppState>,
+    id: Path<String>,
+) -> Result<Json<RegistryRecord>, AppError> {
     let record = get_record_by_id(&state, &id).await?;
     Ok(Json(record))
 }
@@ -794,7 +832,10 @@ async fn update_registry_record(
     responses((status = 200, description = "Retirement result"), (status = 404, description = "Not found", body = ErrorEnvelope))
 ))]
 #[delete("/v1/registry/records/{id}")]
-async fn delete_registry_record(state: Data<AppState>, id: Path<String>) -> Result<Json<Value>, AppError> {
+async fn delete_registry_record(
+    state: Data<AppState>,
+    id: Path<String>,
+) -> Result<Json<Value>, AppError> {
     soft_delete_record(&state, &id).await?;
     Ok(Json(json!({"status": "retired", "id": id.into_inner()})))
 }
@@ -860,7 +901,10 @@ async fn bootstrap_schema(pool: &SqlitePool) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn create_record(state: &AppState, input: RegistryRecordUpsert) -> Result<RegistryRecord, AppError> {
+async fn create_record(
+    state: &AppState,
+    input: RegistryRecordUpsert,
+) -> Result<RegistryRecord, AppError> {
     validate_registry_input(&input.namespace, &input.kind, &input.key)?;
 
     let next_version = sqlx::query_scalar::<_, Option<i64>>(
@@ -882,7 +926,13 @@ async fn create_record(state: &AppState, input: RegistryRecordUpsert) -> Result<
         .map_err(|error| AppError::InvalidInput(format!("invalid provenance value: {error}")))?;
     let tags_json = serde_json::to_string(&input.tags)
         .map_err(|error| AppError::InvalidInput(format!("invalid tags: {error}")))?;
-    let digest = registry_digest(&input.namespace, &input.kind, &input.key, next_version, &value_json);
+    let digest = registry_digest(
+        &input.namespace,
+        &input.kind,
+        &input.key,
+        next_version,
+        &value_json,
+    );
     let signature = sign_digest(state.signing_key.as_deref(), &digest);
 
     sqlx::query(
@@ -916,7 +966,10 @@ async fn create_record(state: &AppState, input: RegistryRecordUpsert) -> Result<
     get_record_by_id(state, &id).await
 }
 
-async fn list_records(state: &AppState, include_retired: bool) -> Result<Vec<RegistryRecord>, AppError> {
+async fn list_records(
+    state: &AppState,
+    include_retired: bool,
+) -> Result<Vec<RegistryRecord>, AppError> {
     let rows = if include_retired {
         sqlx::query_as::<_, RegistryRow>(
             r#"
@@ -964,7 +1017,10 @@ async fn get_record_by_id(state: &AppState, id: &str) -> Result<RegistryRecord, 
     .ok_or_else(|| AppError::NotFound(format!("registry record {id}")))?;
 
     let record: RegistryRecord = row.try_into()?;
-    state.registry_cache.insert(id.to_string(), record.clone()).await;
+    state
+        .registry_cache
+        .insert(id.to_string(), record.clone())
+        .await;
     Ok(record)
 }
 
@@ -989,11 +1045,7 @@ async fn get_latest_record_by_key(
     .bind(key)
     .fetch_optional(&state.pool)
     .await?
-    .ok_or_else(|| {
-        AppError::NotFound(format!(
-            "registry record {namespace}/{kind}/{key}"
-        ))
-    })?;
+    .ok_or_else(|| AppError::NotFound(format!("registry record {namespace}/{kind}/{key}")))?;
 
     let record: RegistryRecord = row.try_into()?;
     state
@@ -1037,12 +1089,13 @@ async fn supersede_record(
 
 async fn soft_delete_record(state: &AppState, id: &str) -> Result<(), AppError> {
     let retired_at = Utc::now().to_rfc3339();
-    let rows_affected = sqlx::query("UPDATE registry_records SET retired_at = ?1, updated_at = ?1 WHERE id = ?2")
-        .bind(&retired_at)
-        .bind(id)
-        .execute(&state.pool)
-        .await?
-        .rows_affected();
+    let rows_affected =
+        sqlx::query("UPDATE registry_records SET retired_at = ?1, updated_at = ?1 WHERE id = ?2")
+            .bind(&retired_at)
+            .bind(id)
+            .execute(&state.pool)
+            .await?
+            .rows_affected();
 
     if rows_affected == 0 {
         return Err(AppError::NotFound(format!("registry record {id}")));
@@ -1090,7 +1143,10 @@ where
     }
 }
 
-async fn run_code_verifier(request: &ValidationRequest, registry_refs: &[String]) -> Option<EvidenceItem> {
+async fn run_code_verifier(
+    request: &ValidationRequest,
+    registry_refs: &[String],
+) -> Option<EvidenceItem> {
     if !matches!(request.subject_type, SubjectType::Code) {
         return None;
     }
@@ -1298,8 +1354,9 @@ fn highest_severity(evidence: &[EvidenceItem]) -> Severity {
 async fn log_kaizen_event(state: &AppState, event: KaizenEvent) -> Result<(), AppError> {
     let id = Uuid::now_v7().to_string();
     let created_at = Utc::now().to_rfc3339();
-    let metadata_json = serde_json::to_string(&event.metadata)
-        .map_err(|error| AppError::Internal(format!("failed to serialize kaizen metadata: {error}")))?;
+    let metadata_json = serde_json::to_string(&event.metadata).map_err(|error| {
+        AppError::Internal(format!("failed to serialize kaizen metadata: {error}"))
+    })?;
 
     debug!(
         request_id = %event.request_id,
@@ -1343,7 +1400,9 @@ impl TryFrom<RegistryRow> for RegistryRecord {
                 AppError::Internal(format!("failed to deserialize registry value: {error}"))
             })?,
             provenance: serde_json::from_str(&value.provenance_json).map_err(|error| {
-                AppError::Internal(format!("failed to deserialize registry provenance: {error}"))
+                AppError::Internal(format!(
+                    "failed to deserialize registry provenance: {error}"
+                ))
             })?,
             digest_sha256: value.digest_sha256,
             signature_ed25519: value.signature_ed25519,
@@ -1364,13 +1423,21 @@ fn validate_registry_input(namespace: &str, kind: &str, key: &str) -> Result<(),
             return Err(AppError::InvalidInput(format!("{label} must not be empty")));
         }
         if trimmed.len() > 128 {
-            return Err(AppError::InvalidInput(format!("{label} exceeds 128 characters")));
+            return Err(AppError::InvalidInput(format!(
+                "{label} exceeds 128 characters"
+            )));
         }
     }
     Ok(())
 }
 
-fn registry_digest(namespace: &str, kind: &str, key: &str, version: i64, value_json: &str) -> String {
+fn registry_digest(
+    namespace: &str,
+    kind: &str,
+    key: &str,
+    version: i64,
+    value_json: &str,
+) -> String {
     let mut hasher = Sha256::new();
     hasher.update(namespace.as_bytes());
     hasher.update([0]);
